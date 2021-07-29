@@ -3,6 +3,10 @@ if BLOCK
 
 menu "IO Schedulers"
 
+config IOSCHED_LOOK
+	tristate "LOOK I/O scheduler"
+	default y
+
 config IOSCHED_NOOP
 	bool
 	default y
@@ -48,6 +52,9 @@ choice
 	  Select the I/O scheduler which will be used by default for all
 	  block devices.
 
+	config DEFAULT_LOOK
+		bool "look" if IOSCHED_LOOK=y
+
 	config DEFAULT_DEADLINE
 		bool "Deadline" if IOSCHED_DEADLINE=y
 
@@ -64,6 +71,7 @@ config DEFAULT_IOSCHED
 	default "deadline" if DEFAULT_DEADLINE
 	default "cfq" if DEFAULT_CFQ
 	default "noop" if DEFAULT_NOOP
+	default "look" if DEFAULT_LOOK
 
 config MQ_IOSCHED_DEADLINE
 	tristate "MQ deadline I/O scheduler"
