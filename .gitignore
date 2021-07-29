@@ -6,4 +6,9 @@
 !block/
 block/*
 !block/look-iosched.cpp
+!block/Kconfig.iosched
+!block/Makefile
+
+
+
 

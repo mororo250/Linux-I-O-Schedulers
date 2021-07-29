@@ -8,28 +8,13 @@
 #include <linux/slab.h>
 #include <linux/init.h>
 
-
+enum seek_direction { DIR_LEFT, DIR_RIGHT };
 
 struct look_data 
 {
-	enum seek_direction 
-	{
-		NONE,
-		LEFT,
-		RIGHT
-	};
-
 	struct list_head queue;
-
-
 	seek_direction direction;
 };
-
-void sort_queue(struct request_queue *q)
-{
-	// Go to the beginnig of the queue.
-
-}
 
 static void look_merged_requests(struct request_queue* q, struct request* rq,
 	struct request* next)
@@ -39,19 +24,25 @@ static void look_merged_requests(struct request_queue* q, struct request* rq,
 
 static int look_dispatch(struct request_queue* q, int force)
 {
-	struct look_data* nd = q->elevator->elevator_data;;
+	struct look_data* nd = q->elevator->elevator_data;
 
-	if (nd->queue) 
+	if (!list_empty(&nd->queue)) 
 	{
-		if (nd->direction == LEFT) 
-		{
-			
-		}
-		if (nd->direction == RIGHT) 
-		{
-			list_del_init(nd->queue->queuelist);
-			elv_dispatch_sort(q, nd->queue);
-		}
+		struct request *rq;
+		if (nd->direction == DIR_LEFT) 
+			rq = list_entry(nd->queue.prev, struct request, queuelist);
+		else
+			rq = list_entry(nd->queue.next, struct request, queuelist);
+
+		list_del_init(&rq->queuelist);
+		elv_dispatch_sort(q, rq);
+
+		// Look ahead
+		if (nd->direction == DIR_LEFT && nd->queue->next == NULL)
+			nd->direction = DIR_RIGHT;
+		if (nd->direction == DIR_RIGHT && nd->queue->prev == NULL)
+			nd->direction = DIR_LEFT;
+
 		return 1;
 	}
 	return 0;
@@ -60,8 +51,35 @@ static int look_dispatch(struct request_queue* q, int force)
 static void look_add_request(struct request_queue* q, struct request* rq)
 {
 	struct look_data* nd = q->elevator->elevator_data;
+	struct request *current_rq = list_entry(pos, struct request, queuelist);
+	struct list_head *pos = NULL;
 
-	// todo add in the right position.
+	seek_direction direction;
+	struct sector_t disk_head = blk_rq_pos(current_rq) + blk_rq_sectors(current_rq);
+	
+	list_for_each (pos, &nd->queue)
+	{
+		current_rq = list_entry(pos, struct request, queuelist);
+		if (blk_rq_pos(rq) < disk_head) 
+			// Request is bigger than disk head
+			if (blk_rq_pos(current_rq) < disk_head && blk_rq_pos(rq) < blk_rq_pos(current_rq)) 
+			{
+				direction = DIR_RIGHT;
+				rq->direction = DIR_RIGHT;
+				break;
+			}
+		else // Request is bigger than disk head
+			// Find sport where current is smaller than the head or current smaller than request.
+			if (blk_rq_pos(current_rq) < disk_head || blk_rq_pos(rq) < blk_rq_pos(current_rq)) 
+			{
+				direction = DIR_LEFT;
+				rq->q->elevator->elevator_data->direction = DIR_LEFT;
+				break;
+			}
+		if (!list_empty(&nd->queue)
+			nd->direction = direction;
+		list_add_tail(&rq->queuelist, pos);
+	}
 }
 
 static int look_init_queue(struct request_queue* q, struct elevator_type* e)
@@ -78,7 +96,7 @@ static int look_init_queue(struct request_queue* q, struct elevator_type* e)
 		kobject_put(&eq->kobj);
 		return -ENOMEM;
 	}
-	eq->elevator_data = nd;
+	INIT_LIST_HEAD(&nd->queue);
 
 	spin_lock_irq(q->queue_lock);
 	q->elevator = eq;
@@ -99,8 +117,6 @@ static struct elevator_type elevator_look = {
 		.elevator_merge_req_fn = look_merged_requests,
 		.elevator_dispatch_fn = look_dispatch,
 		.elevator_add_req_fn = look_add_request,
-		.elevator_former_req_fn = look_former_request,
-		.elevator_latter_req_fn = look_latter_request,
 		.elevator_init_fn = look_init_queue,
 		.elevator_exit_fn = look_exit_queue,
 	},
