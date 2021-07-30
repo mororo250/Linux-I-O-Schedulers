@@ -5,7 +5,7 @@
 !.gitignore
 !block/
 block/*
-!block/look-iosched.cpp
+!block/look-iosched.c
 !block/Kconfig.iosched
 !block/Makefile
 
